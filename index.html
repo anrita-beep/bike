@@ -99,9 +99,8 @@
         const Leaf = (p) => <FAIcon icon="fa-solid fa-leaf" {...p} />;
         const Gamepad2 = (p) => <FAIcon icon="fa-solid fa-gamepad" {...p} />;
         const Sparkles = (p) => <FAIcon icon="fa-solid fa-wand-magic-sparkles" {...p} />;
-        const MessageCircle = (p) => <FAIcon icon="fa-regular fa-comment-dots" {...p} />;
+        const Key = (p) => <FAIcon icon="fa-solid fa-key" {...p} />;
         const X = (p) => <FAIcon icon="fa-solid fa-xmark" {...p} />;
-        const User = (p) => <FAIcon icon="fa-solid fa-user" {...p} />;
         const BookOpen = (p) => <FAIcon icon="fa-solid fa-book-open" {...p} />;
         const Star = (p) => <FAIcon icon="fa-solid fa-star" {...p} />;
         const Play = (p) => <FAIcon icon="fa-solid fa-play" {...p} />;
@@ -110,54 +109,46 @@
         const Sun = (p) => <FAIcon icon="fa-solid fa-sun" {...p} />;
         const Moon = (p) => <FAIcon icon="fa-solid fa-moon" {...p} />;
         const Robot = (p) => <FAIcon icon="fa-solid fa-robot" {...p} />;
+        const Lock = (p) => <FAIcon icon="fa-solid fa-lock" {...p} />;
 
-        // --- Gemini API Helper ---
-        // TODO: 請在此處填入您的 API Key
-        const API_KEYS = [
-            "YOUR_API_KEY_HERE" 
-        ];
-
-        const callGemini = async (prompt) => {
-            // 如果使用者沒有填寫 API Key，直接回傳 null 進入 Mock 模式
-            if (API_KEYS[0] === "YOUR_API_KEY_HERE") {
+        // --- Gemini API Helper (Modified to accept key dynamically) ---
+        const callGemini = async (prompt, apiKey) => {
+            // 如果沒有 API Key，回傳 null 以觸發 Mock 模式
+            if (!apiKey || apiKey.trim() === "") {
                 console.warn("No API Key provided. Switching to offline mock mode.");
                 return null;
             }
 
-            for (let i = 0; i < API_KEYS.length; i++) {
-                const apiKey = API_KEYS[i];
-                try {
-                    const response = await fetch(
-                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-                        {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                contents: [{ parts: [{ text: prompt }] }],
-                            }),
-                        }
-                    );
-
-                    if (!response.ok) {
-                        console.warn(`API Key ${i + 1} failed. Status: ${response.status}. Trying next...`);
-                        continue;
+            try {
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                        }),
                     }
+                );
 
-                    const data = await response.json();
-                    
-                    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
-                        return data.candidates[0].content.parts[0].text;
-                    } else {
-                        console.warn(`API Key ${i + 1} returned unexpected structure. Trying next...`);
-                        continue;
-                    }
-
-                } catch (error) {
-                    console.warn(`API Key ${i + 1} network error:`, error);
-                    continue;
+                if (!response.ok) {
+                    console.warn(`API Request failed. Status: ${response.status}.`);
+                    return null;
                 }
+
+                const data = await response.json();
+                
+                if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
+                    return data.candidates[0].content.parts[0].text;
+                } else {
+                    console.warn(`API returned unexpected structure.`);
+                    return null;
+                }
+
+            } catch (error) {
+                console.warn(`Network error:`, error);
+                return null;
             }
-            return null;
         };
 
         // --- 資料結構 ---
@@ -271,17 +262,27 @@
                 "未來展望：持續透過數據分析，優化活動體驗。",
                 "行動呼籲：請點擊左側 AI 教練，為您規劃專屬運動！"
                 ],
-                visual: "ai_coach", // 修改此處：將視覺指定為 AI Coach
+                visual: "ai_coach", 
                 script: "最後，總結今天的報告。綠能腳踏車活動證明了，圖書館不只是知識的殿堂...請試試看我們開發的 AI 健身教練，為您量身打造運動計畫。"
             }
         ];
 
-        // --- 嵌入式 AI 助手元件 (改造版) ---
-        const EmbeddedAICoach = ({ isDayMode }) => {
-            const [step, setStep] = useState('input');
+        // --- 嵌入式 AI 助手元件 (改造版 - 含 API Key 輸入) ---
+        const EmbeddedAICoach = ({ isDayMode, apiKey, setApiKey }) => {
+            const [step, setStep] = useState('init'); // init (check key) | input | processing | result
             const [mood, setMood] = useState('');
             const [time, setTime] = useState('');
             const [result, setResult] = useState(null);
+            const [tempKey, setTempKey] = useState('');
+
+            // 初始化檢查：如果已經有 Key，直接進入輸入模式
+            useEffect(() => {
+                if (apiKey) {
+                    setStep('input');
+                } else if (step !== 'processing' && step !== 'result') {
+                    setStep('key_input');
+                }
+            }, [apiKey]);
 
             const moodMap = {
                 'stress': '壓力很大，想發洩',
@@ -292,6 +293,18 @@
             const timeMap = {
                 'short': '少於 30 分鐘',
                 'long': '多於 30 分鐘'
+            };
+
+            const handleSaveKey = () => {
+                if(tempKey.trim()) {
+                    setApiKey(tempKey.trim());
+                    setStep('input');
+                }
+            };
+
+            const handleSkipKey = () => {
+                setApiKey(''); // 確保是空的，代表 Mock 模式
+                setStep('input');
             };
 
             const generatePlan = async () => {
@@ -314,9 +327,10 @@
                 `;
 
                 try {
-                    const responseText = await callGemini(prompt);
+                    // 使用傳入的 apiKey (如果是空的，callGemini 會回傳 null)
+                    const responseText = await callGemini(prompt, apiKey);
                     
-                    if (!responseText) throw new Error("API Limit Reached or Missing Key");
+                    if (!responseText) throw new Error("Mock Mode Triggered");
 
                     let jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
                     const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
@@ -328,7 +342,7 @@
                     setResult(plan);
                     setStep('result');
                 } catch (e) {
-                    console.warn("Using offline mock response due to:", e.message);
+                    console.warn("Using offline mock response.");
                     
                     const mockResponses = [
                         {
@@ -369,13 +383,15 @@
                 bg: 'bg-white/80',
                 accent: 'bg-emerald-100',
                 button: 'bg-emerald-500 hover:bg-emerald-600',
-                text: 'text-slate-800'
+                text: 'text-slate-800',
+                inputBg: 'bg-white'
             } : {
                 border: 'border-[#5B7C99]',
                 bg: 'bg-[#1A252F]/80',
                 accent: 'bg-[#2C3E50]',
                 button: 'bg-[#5B7C99] hover:bg-[#34495E]',
-                text: 'text-white'
+                text: 'text-white',
+                inputBg: 'bg-black/30'
             };
 
             const reset = () => {
@@ -395,7 +411,54 @@
                     <div className="flex items-center gap-2 mb-4 z-10">
                         <Robot size={24} className={isDayMode ? 'text-emerald-600' : 'text-yellow-400'} />
                         <h3 className={`text-xl font-bold ${themeColors.text}`}>AI 健身教練</h3>
+                        {/* Reset Key Button (small) */}
+                        {step !== 'key_input' && (
+                            <button 
+                                onClick={() => { setApiKey(''); setStep('key_input'); }}
+                                className="absolute top-4 right-4 opacity-50 hover:opacity-100 transition-opacity"
+                                title="重設 API Key"
+                            >
+                                <Lock size={14} className={themeColors.text} />
+                            </button>
+                        )}
                     </div>
+
+                    {/* Step: API Key Input */}
+                    {step === 'key_input' && (
+                        <div className="w-full z-10 animate-fadeIn space-y-4 text-center">
+                            <p className={`text-sm opacity-80 ${themeColors.text}`}>請輸入 Gemini API Key 以啟動 AI</p>
+                            
+                            <div className="relative">
+                                <Key className={`absolute left-3 top-1/2 transform -translate-y-1/2 opacity-50 ${themeColors.text}`} size={14} />
+                                <input 
+                                    type="password"
+                                    value={tempKey}
+                                    onChange={(e) => setTempKey(e.target.value)}
+                                    placeholder="貼上 API Key..."
+                                    className={`w-full py-2 pl-10 pr-4 rounded-xl border outline-none text-sm transition-all ${themeColors.inputBg} ${themeColors.text} ${isDayMode ? 'border-gray-300 focus:border-emerald-500' : 'border-gray-600 focus:border-yellow-400'}`}
+                                />
+                            </div>
+
+                            <button 
+                                onClick={handleSaveKey}
+                                disabled={!tempKey.trim()}
+                                className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${
+                                    !tempKey.trim() 
+                                    ? 'bg-gray-400/50 cursor-not-allowed opacity-50' 
+                                    : `${themeColors.button} text-white shadow-lg hover:scale-105`
+                                }`}
+                            >
+                                儲存並啟用
+                            </button>
+
+                            <button 
+                                onClick={handleSkipKey}
+                                className={`text-xs underline opacity-60 hover:opacity-100 transition-opacity ${themeColors.text}`}
+                            >
+                                沒有 Key？使用離線模式 (Mock)
+                            </button>
+                        </div>
+                    )}
 
                     {step === 'input' && (
                         <div className="w-full z-10 animate-fadeIn space-y-4">
@@ -493,7 +556,7 @@
         };
 
         // --- 星星的耳語 (Poem Generator) 元件 ---
-        const StarryWhisper = ({ slideData, onClose, isDayMode }) => {
+        const StarryWhisper = ({ slideData, onClose, isDayMode, apiKey }) => {
             const [poem, setPoem] = useState('');
             const [loading, setLoading] = useState(true);
 
@@ -508,7 +571,7 @@
                         風格要求：溫暖、夢幻、帶點哲理，像是對著${isDayMode ? '藍天白雲' : '星星'}說話。不要太嚴肅的數據分析，要感性。
                         用繁體中文回答。
                         `;
-                        const text = await callGemini(prompt);
+                        const text = await callGemini(prompt, apiKey);
                         
                         if (text) {
                             setPoem(text);
@@ -521,7 +584,7 @@
                     setLoading(false);
                 };
                 fetchPoem();
-            }, [slideData, isDayMode]);
+            }, [slideData, isDayMode, apiKey]);
 
             return (
                 <div className="absolute inset-0 z-30 flex items-center justify-center p-4 md:p-12 animate-fadeIn bg-black/40 backdrop-blur-sm">
@@ -554,6 +617,13 @@
                         {poem}
                         </div>
                     )}
+                    
+                    {!apiKey && (
+                        <div className="mt-4 text-xs text-white/50">
+                            (目前為離線模式，請至 AI 教練設定 API Key 以獲得即時詩句)
+                        </div>
+                    )}
+
                     </div>
                 </div>
                 </div>
@@ -566,8 +636,9 @@
             const [showScript, setShowScript] = useState(false);
             const [showWhisper, setShowWhisper] = useState(false);
             const [theme, setTheme] = useState('night'); // 'night' | 'day'
-            const touchStartX = useRef(null);
+            const [userApiKey, setUserApiKey] = useState(''); // Global API Key state
 
+            const touchStartX = useRef(null);
             const isDayMode = theme === 'day';
 
             const nextSlide = () => {
@@ -774,7 +845,7 @@
                         {/* 左側：視覺意象區 (含 AI Coach) */}
                         <div className="w-full md:w-5/12 h-auto md:h-full flex flex-col items-center justify-center relative group shrink-0 gap-4">
                         {slide.visual === 'ai_coach' ? (
-                            <EmbeddedAICoach isDayMode={isDayMode} />
+                            <EmbeddedAICoach isDayMode={isDayMode} apiKey={userApiKey} setApiKey={setUserApiKey} />
                         ) : slide.visual === 'video_intro' ? (
                             <div className="flex flex-col gap-3 w-full h-full justify-end pb-4 mt-auto">
                             
@@ -900,7 +971,7 @@
                         )}
                         </div>
                         
-                        {showWhisper && <StarryWhisper slideData={slide} onClose={() => setShowWhisper(false)} isDayMode={isDayMode} />}
+                        {showWhisper && <StarryWhisper slideData={slide} onClose={() => setShowWhisper(false)} isDayMode={isDayMode} apiKey={userApiKey} />}
                     </main>
                     )}
 
@@ -941,9 +1012,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
