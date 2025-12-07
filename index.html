@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>星空下的綠能騎行 - 互動簡報</title>
+    <title>星空下的綠能騎行 - 互動簡報 (修復版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -111,17 +111,20 @@
         const Robot = (p) => <FAIcon icon="fa-solid fa-robot" {...p} />;
         const Lock = (p) => <FAIcon icon="fa-solid fa-lock" {...p} />;
 
-        // --- Gemini API Helper (Modified to accept key dynamically) ---
+        // --- Gemini API Helper (修復版) ---
         const callGemini = async (prompt, apiKey) => {
-            // 如果沒有 API Key，回傳 null 以觸發 Mock 模式
+            // 1. 檢查是否有 Key
             if (!apiKey || apiKey.trim() === "") {
-                console.warn("No API Key provided. Switching to offline mock mode.");
+                alert("【錯誤】未偵測到 API Key！\n請確認您有輸入 Key 並按下「儲存並啟用」按鈕。");
                 return null;
             }
 
             try {
+                // 2. 發送請求 (已將模型名稱改為 gemini-1.5-flash-latest 以解決 404 問題)
+                const modelName = "gemini-1.5-flash-latest";
+                
                 const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -131,22 +134,34 @@
                     }
                 );
 
+                // 3. 檢查 API 是否報錯
                 if (!response.ok) {
-                    console.warn(`API Request failed. Status: ${response.status}.`);
+                    const errorData = await response.json().catch(() => ({})); 
+                    const errorMessage = errorData.error?.message || "無法取得詳細錯誤訊息";
+                    
+                    if (response.status === 404) {
+                         alert(`【模型錯誤 (404)】\nGoogle 找不到 ${modelName} 模型。\n這可能是 API 版本暫時不支援，建議稍後再試。`);
+                    } else {
+                         alert(`【API 請求失敗】\n\n狀態碼: ${response.status}\n錯誤訊息: ${errorMessage}\n\n(請檢查 Key 是否正確複製)`);
+                    }
+                    
+                    console.error("API Error Details:", errorData);
                     return null;
                 }
 
+                // 4. 處理成功資料
                 const data = await response.json();
                 
                 if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
                     return data.candidates[0].content.parts[0].text;
                 } else {
-                    console.warn(`API returned unexpected structure.`);
+                    alert("【API 回傳格式異常】\n雖然連線成功，但 AI 沒有回傳內容。");
                     return null;
                 }
 
             } catch (error) {
-                console.warn(`Network error:`, error);
+                // 5. 處理網路錯誤
+                alert(`【網路或程式錯誤】\n${error.message}`);
                 return null;
             }
         };
@@ -267,7 +282,7 @@
             }
         ];
 
-        // --- 嵌入式 AI 助手元件 (改造版 - 含 API Key 輸入) ---
+        // --- 嵌入式 AI 助手元件 ---
         const EmbeddedAICoach = ({ isDayMode, apiKey, setApiKey }) => {
             const [step, setStep] = useState('init'); // init (check key) | input | processing | result
             const [mood, setMood] = useState('');
@@ -342,6 +357,8 @@
                     setResult(plan);
                     setStep('result');
                 } catch (e) {
+                    // 如果不是使用者主動取消，而是 callGemini 回傳 null (報錯了)，這裡還是會進 Mock 模式
+                    // 但因為 callGemini 已經彈窗過了，使用者會知道錯誤。
                     console.warn("Using offline mock response.");
                     
                     const mockResponses = [
@@ -576,6 +593,7 @@
                         if (text) {
                             setPoem(text);
                         } else {
+                            // 如果 callGemini 回傳 null (例如 API 錯誤)，這裡會顯示預設文字
                             setPoem(isDayMode ? "雲朵靜靜飄過，它說：休息一下，明天會更好。" : "星星眨了眨眼，彷彿在說：你的努力，宇宙都看見了。");
                         }
                     } catch (e) {
@@ -849,31 +867,7 @@
                         ) : slide.visual === 'video_intro' ? (
                             <div className="flex flex-col gap-3 w-full h-full justify-end pb-4 mt-auto">
                             
-                         {/* 影片 3: 發電GO */}
-                            <a 
-                                href="https://youtu.be/M_V4vNyDHEU" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className={`w-full h-24 md:h-28 rounded-3xl overflow-hidden shadow-xl border-4 ${styles.videoBorder} relative animate-fadeIn shrink-0 group/video cursor-pointer transition-colors`}
-                            >
-                                <img 
-                                src="https://img.youtube.com/vi/M_V4vNyDHEU/maxresdefault.jpg" 
-                                alt="發電GO縮圖"
-                                className="w-full h-full object-cover opacity-90 group-hover/video:opacity-100 transition-opacity transform group-hover/video:scale-105 duration-700"
-                                />
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="bg-black/30 backdrop-blur-sm p-3 rounded-full group-hover/video:scale-110 transition-transform">
-                                    <Play size={20} className="fill-white text-white" />
-                                </div>
-                                </div>
-                                <div className="absolute bottom-2 left-4 pointer-events-none bg-black/60 px-2 py-1 rounded-full backdrop-blur-sm">
-                                    <p className="text-yellow-200 font-bold text-xs flex items-center">
-                                    <Play size={12} className="inline mr-1 fill-current" />
-                                    發電GO
-                                    </p>
-                                </div>
-                            </a>
-
+                         
 
                             {/* 影片 1 */}
                             <a 
@@ -1036,4 +1030,3 @@
     </script>
 </body>
 </html>
-
