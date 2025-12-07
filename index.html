@@ -116,9 +116,37 @@
         const Moon = (p) => <FAIcon icon="fa-solid fa-moon" {...p} />;
 
         // --- Gemini API Helper (Multi-Key Fallback) ---
-        const API_KEYS = [
-            "AIzaSyDIruwrl1acAVBcdCYHsCwu8KdztSXQTGU" 
-        ];
+        <div id="setup-panel" style="padding: 20px; background: #f0f0f0; border-bottom: 1px solid #ccc;">
+    <label>請輸入 API Key：</label>
+    <input type="password" id="user-api-key" placeholder="貼上 Key...">
+    <button onclick="startDemo()">啟動 Demo</button>
+</div>
+            let apiKey = "";
+
+function startDemo() {
+    // 1. 取得輸入框的值
+    const input = document.getElementById("user-api-key");
+    apiKey = input.value.trim();
+
+    if (!apiKey) {
+        alert("請輸入 Key！");
+        return;
+    }
+
+    // 2. 隱藏輸入面板 (讓畫面變乾淨)
+    document.getElementById("setup-panel").style.display = "none";
+
+    // 3. 呼叫您原本的主程式
+    // 這裡放您原本頁面載入時會執行的函式
+    initMyMap(); // 舉例
+}
+
+// 您原本的主程式
+function initMyMap() {
+    console.log("使用 Key: " + apiKey + " 執行中...");
+    // 在這裡使用 apiKey 變數
+}
+        
 
         const callGemini = async (prompt) => {
             for (let i = 0; i < API_KEYS.length; i++) {
@@ -1007,3 +1035,4 @@
 </body>
 
 </html>
+
